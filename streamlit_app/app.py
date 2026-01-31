@@ -482,8 +482,13 @@ if user_input and not st.session_state.processing:
 if st.session_state.processing and st.session_state.pending_query:
     query = st.session_state.pending_query
     
-    # Add user message only if not already added
-    if not st.session_state.messages or st.session_state.messages[-1].get("content") != query or st.session_state.messages[-1].get("role") != "user":
+    # Add user message only if not already added (fix: use 'and' logic for proper deduplication)
+    already_added = (
+        st.session_state.messages 
+        and st.session_state.messages[-1].get("role") == "user" 
+        and st.session_state.messages[-1].get("content") == query
+    )
+    if not already_added:
         st.session_state.messages.append({"role": "user", "content": query})
     
     # Display user message immediately
@@ -511,26 +516,32 @@ if st.session_state.processing and st.session_state.pending_query:
             sources = list(set([c.get("page", "?") for c in chunks]))
             sources.sort()
             
-            # Add assistant message with chunks for later viewing
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": answer,
-                "confidence": confidence,
-                "sources": sources,
-                "chunks": chunks  # Store chunks for optional viewing
-            })
+            # Add assistant message only if there's no pending assistant response for this query
+            # Check if last message is already an assistant response (prevent duplicates)
+            last_msg = st.session_state.messages[-1] if st.session_state.messages else None
+            if not last_msg or last_msg.get("role") != "assistant":
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer,
+                    "confidence": confidence,
+                    "sources": sources,
+                    "chunks": chunks  # Store chunks for optional viewing
+                })
             
             st.session_state.last_response = response
             
     except Exception as e:
         st.error(f"❌ Error: {str(e)}")
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": f"Sorry, an error occurred: {str(e)}",
-            "confidence": 0,
-            "sources": [],
-            "chunks": []
-        })
+        # Only add error message if not already an assistant response
+        last_msg = st.session_state.messages[-1] if st.session_state.messages else None
+        if not last_msg or last_msg.get("role") != "assistant":
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"Sorry, an error occurred: {str(e)}",
+                "confidence": 0,
+                "sources": [],
+                "chunks": []
+            })
     
     # Clear processing state
     st.session_state.processing = False
