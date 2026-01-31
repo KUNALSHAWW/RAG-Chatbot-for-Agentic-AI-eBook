@@ -183,7 +183,7 @@ def initialize_pipeline(pinecone_key, index_name, openai_key, groq_key, local_mo
             namespace="agentic-ai",
             openai_api_key=openai_key if openai_key else None,
             groq_api_key=groq_key if groq_key else None,
-            local_mode=local_mode
+            local_only=local_mode
         )
         return pipeline, None
     except Exception as e:
