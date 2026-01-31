@@ -22,6 +22,26 @@ load_dotenv(env_path)
 # Import RAG pipeline
 from app.rag_pipeline import RAGPipeline
 
+
+# ============================================================================
+# Helper to get secrets securely
+# ============================================================================
+
+def get_secret(key: str, default: str = "") -> str:
+    """
+    Get secret from Streamlit secrets first, then env vars.
+    This ensures API keys are never displayed openly.
+    """
+    # Try Streamlit secrets first (for deployed apps)
+    try:
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    # Fall back to environment variables
+    return os.getenv(key, default)
+
+
 # ============================================================================
 # Page Configuration
 # ============================================================================
@@ -169,6 +189,28 @@ if "pipeline" not in st.session_state:
 if "last_response" not in st.session_state:
     st.session_state.last_response = None
 
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+
+if "pending_query" not in st.session_state:
+    st.session_state.pending_query = None
+
+# Store API keys in session state (hidden from UI once entered)
+if "api_keys_configured" not in st.session_state:
+    st.session_state.api_keys_configured = False
+
+if "stored_pinecone_key" not in st.session_state:
+    st.session_state.stored_pinecone_key = get_secret("PINECONE_API_KEY", "")
+
+if "stored_index_name" not in st.session_state:
+    st.session_state.stored_index_name = get_secret("PINECONE_INDEX", "agentic-ai-ebook")
+
+if "stored_groq_key" not in st.session_state:
+    st.session_state.stored_groq_key = get_secret("GROQ_API_KEY", "")
+
+if "stored_openai_key" not in st.session_state:
+    st.session_state.stored_openai_key = get_secret("OPENAI_API_KEY", "")
+
 
 # ============================================================================
 # Helper Functions
@@ -206,46 +248,80 @@ def get_confidence_class(confidence):
 with st.sidebar:
     st.markdown("## ⚙️ Settings")
     
-    pinecone_key = st.text_input(
-        "Pinecone API Key",
-        type="password",
-        value=os.getenv("PINECONE_API_KEY", ""),
-        key="pinecone_key"
-    )
-    
-    index_name = st.text_input(
-        "Pinecone Index",
-        value=os.getenv("PINECONE_INDEX", "agentic-ai-ebook"),
-        key="index_name"
-    )
-    
-    groq_key = st.text_input(
-        "Groq API Key (FREE)",
-        type="password",
-        value=os.getenv("GROQ_API_KEY", ""),
-        key="groq_key",
-        help="Get free key at console.groq.com"
-    )
-    
-    openai_key = st.text_input(
-        "OpenAI Key (optional)",
-        type="password",
-        value=os.getenv("OPENAI_API_KEY", ""),
-        key="openai_key"
-    )
+    # Show configuration status
+    if st.session_state.api_keys_configured:
+        st.success("🔐 API Keys Configured")
+        st.info("Keys are stored securely in session")
+        
+        if st.button("🔄 Reconfigure Keys", use_container_width=True):
+            st.session_state.api_keys_configured = False
+            st.session_state.pipeline = None
+            st.rerun()
+    else:
+        st.markdown("### 🔑 Enter API Keys")
+        st.caption("Keys are stored securely and hidden after configuration")
+        
+        pinecone_key = st.text_input(
+            "Pinecone API Key",
+            type="password",
+            value="",
+            key="pinecone_key_input",
+            placeholder="Enter your Pinecone API key"
+        )
+        
+        index_name = st.text_input(
+            "Pinecone Index",
+            value=st.session_state.stored_index_name,
+            key="index_name_input"
+        )
+        
+        groq_key = st.text_input(
+            "Groq API Key (FREE)",
+            type="password",
+            value="",
+            key="groq_key_input",
+            help="Get free key at console.groq.com",
+            placeholder="Enter your Groq API key"
+        )
+        
+        openai_key = st.text_input(
+            "OpenAI Key (optional)",
+            type="password",
+            value="",
+            key="openai_key_input",
+            placeholder="Optional - for OpenAI models"
+        )
+        
+        if st.button("💾 Save & Configure", type="primary", use_container_width=True):
+            # Store keys in session state (not displayed)
+            if pinecone_key:
+                st.session_state.stored_pinecone_key = pinecone_key
+            if groq_key:
+                st.session_state.stored_groq_key = groq_key
+            if openai_key:
+                st.session_state.stored_openai_key = openai_key
+            st.session_state.stored_index_name = index_name
+            st.session_state.api_keys_configured = True
+            st.rerun()
     
     st.markdown("---")
     
     top_k = st.slider("Chunks to retrieve", 1, 10, 6, key="top_k")
     use_llm = st.checkbox("Use LLM", value=True, key="use_llm")
     local_mode = st.checkbox("Local Mode", value=False, key="local_mode")
+    show_chunks = st.checkbox("Show retrieved chunks", value=False, key="show_chunks", 
+                              help="Enable to see the top-k retrieved document chunks")
     
     st.markdown("---")
     
-    if st.button("🚀 Initialize", type="primary", use_container_width=True):
+    if st.button("🚀 Initialize Pipeline", type="primary", use_container_width=True):
         with st.spinner("Initializing..."):
             pipeline, error = initialize_pipeline(
-                pinecone_key, index_name, openai_key, groq_key, local_mode
+                st.session_state.stored_pinecone_key, 
+                st.session_state.stored_index_name, 
+                st.session_state.stored_openai_key, 
+                st.session_state.stored_groq_key, 
+                local_mode
             )
             if error:
                 st.error(f"❌ {error}")
@@ -261,23 +337,24 @@ with st.sidebar:
 
 
 # ============================================================================
-# Auto-initialize if env vars are set
+# Auto-initialize if env vars/secrets are set
 # ============================================================================
 
-if st.session_state.pipeline is None:
-    pk = os.getenv("PINECONE_API_KEY", "")
-    gk = os.getenv("GROQ_API_KEY", "")
+if st.session_state.pipeline is None and not st.session_state.processing:
+    pk = st.session_state.stored_pinecone_key
+    gk = st.session_state.stored_groq_key
     
     if pk and gk:
         pipeline, _ = initialize_pipeline(
             pk,
-            os.getenv("PINECONE_INDEX", "agentic-ai-ebook"),
-            os.getenv("OPENAI_API_KEY", ""),
+            st.session_state.stored_index_name,
+            st.session_state.stored_openai_key,
             gk,
             False
         )
         if pipeline:
             st.session_state.pipeline = pipeline
+            st.session_state.api_keys_configured = True
 
 
 # ============================================================================
@@ -326,7 +403,7 @@ if not st.session_state.messages:
 
 else:
     # Display all messages
-    for message in st.session_state.messages:
+    for idx, message in enumerate(st.session_state.messages):
         if message["role"] == "user":
             st.markdown(f"""
             <div style="display: flex; justify-content: flex-end; margin: 1rem 0;">
@@ -337,6 +414,7 @@ else:
             content = message["content"]
             confidence = message.get("confidence", 0)
             sources = message.get("sources", [])
+            chunks = message.get("chunks", [])
             
             conf_class = get_confidence_class(confidence)
             
@@ -359,6 +437,19 @@ else:
                 </div>
             </div>
             """, unsafe_allow_html=True)
+            
+            # Show retrieved chunks if enabled and chunks exist
+            if st.session_state.get("show_chunks", False) and chunks:
+                with st.expander(f"📚 View Top {len(chunks)} Retrieved Chunks", expanded=False):
+                    for i, chunk in enumerate(chunks, 1):
+                        chunk_text = chunk.get("text", "")[:500] + "..." if len(chunk.get("text", "")) > 500 else chunk.get("text", "")
+                        chunk_page = chunk.get("page", "?")
+                        chunk_score = chunk.get("score", 0)
+                        st.markdown(f"""
+                        **Chunk {i}** (Page {chunk_page}, Score: {chunk_score:.3f})
+                        > {chunk_text}
+                        ---
+                        """)
     
     # Clear chat button
     col1, col2, col3 = st.columns([1, 1, 1])
@@ -366,6 +457,8 @@ else:
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.last_response = None
+            st.session_state.processing = False
+            st.session_state.pending_query = None
             st.rerun()
 
 
@@ -375,51 +468,74 @@ else:
 
 user_input = st.chat_input("Ask a question about the Agentic AI eBook...")
 
-if user_input:
+# Handle new user input
+if user_input and not st.session_state.processing:
     if st.session_state.pipeline is None:
         st.warning("⚠️ Please initialize the pipeline first (open sidebar → click Initialize)")
     else:
-        # Add user message
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        
-        # Get response
-        try:
-            with st.spinner("🔍 Searching document..."):
-                response = st.session_state.pipeline.query(
-                    user_input,
-                    top_k=st.session_state.get("top_k", 6),
-                    use_llm=st.session_state.get("use_llm", True)
-                )
-                
-                # Extract data
-                answer = response.get("final_answer", "I couldn't find an answer.")
-                confidence = response.get("confidence", 0.0)
-                chunks = response.get("retrieved_chunks", [])
-                
-                # Get source pages
-                sources = list(set([c.get("page", "?") for c in chunks]))
-                sources.sort()
-                
-                # Add assistant message
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": answer,
-                    "confidence": confidence,
-                    "sources": sources
-                })
-                
-                st.session_state.last_response = response
-                st.rerun()
-                
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+        # Set processing flag to prevent duplicate queries
+        st.session_state.processing = True
+        st.session_state.pending_query = user_input
+        st.rerun()
+
+# Process pending query (runs after rerun to ensure single execution)
+if st.session_state.processing and st.session_state.pending_query:
+    query = st.session_state.pending_query
+    
+    # Add user message only if not already added
+    if not st.session_state.messages or st.session_state.messages[-1].get("content") != query or st.session_state.messages[-1].get("role") != "user":
+        st.session_state.messages.append({"role": "user", "content": query})
+    
+    # Display user message immediately
+    st.markdown(f"""
+    <div style="display: flex; justify-content: flex-end; margin: 1rem 0;">
+        <div class="user-message">{query}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Get response
+    try:
+        with st.spinner("🔍 Searching document and generating answer..."):
+            response = st.session_state.pipeline.query(
+                query,
+                top_k=st.session_state.get("top_k", 6),
+                use_llm=st.session_state.get("use_llm", True)
+            )
+            
+            # Extract data - single best answer
+            answer = response.get("final_answer", "I couldn't find an answer.")
+            confidence = response.get("confidence", 0.0)
+            chunks = response.get("retrieved_chunks", [])
+            
+            # Get source pages
+            sources = list(set([c.get("page", "?") for c in chunks]))
+            sources.sort()
+            
+            # Add assistant message with chunks for later viewing
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": f"Sorry, an error occurred: {str(e)}",
-                "confidence": 0,
-                "sources": []
+                "content": answer,
+                "confidence": confidence,
+                "sources": sources,
+                "chunks": chunks  # Store chunks for optional viewing
             })
-            st.rerun()
+            
+            st.session_state.last_response = response
+            
+    except Exception as e:
+        st.error(f"❌ Error: {str(e)}")
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": f"Sorry, an error occurred: {str(e)}",
+            "confidence": 0,
+            "sources": [],
+            "chunks": []
+        })
+    
+    # Clear processing state
+    st.session_state.processing = False
+    st.session_state.pending_query = None
+    st.rerun()
 
 
 # ============================================================================
