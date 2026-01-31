@@ -1,0 +1,21 @@
+# Sample Queries for the Agentic AI eBook Chatbot
+# These are example questions you can use to test the RAG system
+# Each question should be answerable from the Ebook-Agentic-AI.pdf
+
+# Query 1: Definition question
+What is the definition of 'agentic AI' described in the eBook?
+
+# Query 2: List-based question
+List the three risks of agentic systems the eBook mentions.
+
+# Query 3: Recommendation question
+According to the eBook, what are the recommended safeguards for deploying agentic AI?
+
+# Query 4: Comparison question
+How does the eBook distinguish between autonomous agents and traditional automation?
+
+# Query 5: Forward-looking question
+What future research directions does the eBook propose?
+
+# Query 6: Summary question
+Summarize the eBook's conclusion in one paragraph.
