@@ -259,6 +259,9 @@ if not st.session_state.pipeline:
         st.markdown(f"- {query}")
 
 else:
+    # Chat input MUST be outside columns/containers
+    user_input = st.chat_input("Ask a question about the Agentic AI eBook...")
+    
     # Chat interface
     col1, col2 = st.columns([2, 1])
     
@@ -272,9 +275,6 @@ else:
             for message in st.session_state.messages:
                 with st.chat_message(message["role"]):
                     st.write(message["content"])
-        
-        # Chat input
-        user_input = st.chat_input("Ask a question about the Agentic AI eBook...")
         
         if user_input:
             # Add user message to chat
