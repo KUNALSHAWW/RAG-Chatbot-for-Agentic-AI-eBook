@@ -1,3 +1,14 @@
+---
+title: RAG Chatbot for Agentic AI eBook
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: "1.28.0"
+app_file: streamlit_app/app.py
+pinned: false
+---
+
 # 🤖 RAG Chatbot for Agentic AI eBook
 
 A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly** from the supplied Agentic AI eBook PDF. Built as an AI Engineer Internship assignment.
