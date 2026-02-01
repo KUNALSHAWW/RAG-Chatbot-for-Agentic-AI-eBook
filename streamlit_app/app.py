@@ -195,6 +195,10 @@ if "processing" not in st.session_state:
 if "pending_query" not in st.session_state:
     st.session_state.pending_query = None
 
+# Track the last processed query to prevent duplicate processing
+if "last_processed_query" not in st.session_state:
+    st.session_state.last_processed_query = None
+
 # Store API keys in session state (hidden from UI once entered)
 if "api_keys_configured" not in st.session_state:
     st.session_state.api_keys_configured = False
@@ -459,6 +463,7 @@ else:
             st.session_state.last_response = None
             st.session_state.processing = False
             st.session_state.pending_query = None
+            st.session_state.last_processed_query = None  # Reset processed query tracker
             st.rerun()
 
 
@@ -482,71 +487,80 @@ if user_input and not st.session_state.processing:
 if st.session_state.processing and st.session_state.pending_query:
     query = st.session_state.pending_query
     
-    # Add user message only if not already added (fix: use 'and' logic for proper deduplication)
-    already_added = (
-        st.session_state.messages 
-        and st.session_state.messages[-1].get("role") == "user" 
-        and st.session_state.messages[-1].get("content") == query
-    )
-    if not already_added:
-        st.session_state.messages.append({"role": "user", "content": query})
-    
-    # Display user message immediately
-    st.markdown(f"""
-    <div style="display: flex; justify-content: flex-end; margin: 1rem 0;">
-        <div class="user-message">{query}</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Get response
-    try:
-        with st.spinner("🔍 Searching document and generating answer..."):
-            response = st.session_state.pipeline.query(
-                query,
-                top_k=st.session_state.get("top_k", 6),
-                use_llm=st.session_state.get("use_llm", True)
-            )
-            
-            # Extract data - single best answer
-            answer = response.get("final_answer", "I couldn't find an answer.")
-            confidence = response.get("confidence", 0.0)
-            chunks = response.get("retrieved_chunks", [])
-            
-            # Get source pages
-            sources = list(set([c.get("page", "?") for c in chunks]))
-            sources.sort()
-            
-            # Add assistant message only if there's no pending assistant response for this query
-            # Check if last message is already an assistant response (prevent duplicates)
+    # CRITICAL: Check if this exact query was already processed to prevent duplicates
+    # This handles race conditions in Streamlit's rerun cycle
+    if st.session_state.last_processed_query == query:
+        # Already processed, just clear state and skip
+        st.session_state.processing = False
+        st.session_state.pending_query = None
+    else:
+        # Mark this query as being processed IMMEDIATELY
+        st.session_state.last_processed_query = query
+        
+        # Add user message only if not already added
+        already_added = (
+            st.session_state.messages 
+            and st.session_state.messages[-1].get("role") == "user" 
+            and st.session_state.messages[-1].get("content") == query
+        )
+        if not already_added:
+            st.session_state.messages.append({"role": "user", "content": query})
+        
+        # Display user message immediately
+        st.markdown(f"""
+        <div style="display: flex; justify-content: flex-end; margin: 1rem 0;">
+            <div class="user-message">{query}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Get response
+        try:
+            with st.spinner("🔍 Searching document and generating answer..."):
+                response = st.session_state.pipeline.query(
+                    query,
+                    top_k=st.session_state.get("top_k", 6),
+                    use_llm=st.session_state.get("use_llm", True)
+                )
+                
+                # Extract data - single best answer
+                answer = response.get("final_answer", "I couldn't find an answer.")
+                confidence = response.get("confidence", 0.0)
+                chunks = response.get("retrieved_chunks", [])
+                
+                # Get source pages
+                sources = list(set([c.get("page", "?") for c in chunks]))
+                sources.sort()
+                
+                # Add assistant message only if not already added for this query
+                last_msg = st.session_state.messages[-1] if st.session_state.messages else None
+                if not last_msg or last_msg.get("role") != "assistant":
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": answer,
+                        "confidence": confidence,
+                        "sources": sources,
+                        "chunks": chunks  # Store chunks for optional viewing
+                    })
+                
+                st.session_state.last_response = response
+                
+        except Exception as e:
+            st.error(f"❌ Error: {str(e)}")
+            # Only add error message if not already an assistant response
             last_msg = st.session_state.messages[-1] if st.session_state.messages else None
             if not last_msg or last_msg.get("role") != "assistant":
                 st.session_state.messages.append({
                     "role": "assistant",
-                    "content": answer,
-                    "confidence": confidence,
-                    "sources": sources,
-                    "chunks": chunks  # Store chunks for optional viewing
+                    "content": f"Sorry, an error occurred: {str(e)}",
+                    "confidence": 0,
+                    "sources": [],
+                    "chunks": []
                 })
-            
-            st.session_state.last_response = response
-            
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        # Only add error message if not already an assistant response
-        last_msg = st.session_state.messages[-1] if st.session_state.messages else None
-        if not last_msg or last_msg.get("role") != "assistant":
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": f"Sorry, an error occurred: {str(e)}",
-                "confidence": 0,
-                "sources": [],
-                "chunks": []
-            })
-    
-    # Clear processing state
-    st.session_state.processing = False
-    st.session_state.pending_query = None
-    st.rerun()
+        
+        # Clear processing state
+        st.session_state.processing = False
+        st.session_state.pending_query = None
+        st.rerun()
 
 
 # ============================================================================
