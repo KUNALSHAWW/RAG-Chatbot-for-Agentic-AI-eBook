@@ -1,23 +1,10 @@
----
-title: RAG Chatbot for Agentic AI eBook
-emoji: 🤖
-colorFrom: blue
-colorTo: indigo
-sdk: streamlit
-sdk_version: "1.28.0"
-app_file: streamlit_app/app.py
-pinned: false
----
-
 # 🤖 RAG Chatbot for Agentic AI eBook
 
-A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly** from the supplied Agentic AI eBook PDF. Built with LangGraph orchestration, Pinecone vector storage, and Groq LLM.
+A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly** from the supplied Agentic AI eBook PDF. Built as an AI Engineer Internship assignment.
 
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://python.org)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)](https://streamlit.io)
-[![LangGraph](https://img.shields.io/badge/LangGraph-RAG-orange.svg)](https://github.com/langchain-ai/langgraph)
-[![Pinecone](https://img.shields.io/badge/Pinecone-VectorDB-purple.svg)](https://pinecone.io)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.20+-red.svg)
+![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ---
 
@@ -38,11 +25,10 @@ A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly
 ## ✨ Features
 
 - **📚 PDF Ingestion**: Extract, clean, chunk, and embed PDF content
-- **🔍 Semantic Search**: Uses sentence-transformers/all-MiniLM-L6-v2 for retrieval
-- **🎯 Grounded Answers**: Responses strictly based on retrieved chunks (no hallucination)
+- **🔍 Semantic Search**: Uses sentence-transformers for accurate retrieval
+- **🎯 Grounded Answers**: Responses are strictly based on retrieved chunks (no hallucination)
 - **📊 Confidence Scores**: Shows similarity-based confidence (0.0-1.0)
-- **🔄 LangGraph Orchestration**: StateGraph pipeline for RAG workflow
-- **🆓 Free LLM**: Uses Groq (llama-3.1-8b-instant) - no paid API required
+- **🔄 Dual Mode**: LLM generation (with OpenAI) or extractive fallback (always works)
 - **💻 Web UI**: Clean Streamlit interface with chunk visualization
 - **☁️ Deployable**: Ready for Hugging Face Spaces
 
@@ -52,8 +38,8 @@ A Retrieval-Augmented Generation (RAG) chatbot that answers questions **strictly
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/KUNALSHAWW/RAG-Chatbot-for-Agentic-AI-eBook.git
-cd RAG-Chatbot-for-Agentic-AI-eBook
+git clone <your-repo-url>
+cd rag-eAgenticAI
 
 # 2. Create virtual environment
 python -m venv venv
@@ -64,7 +50,7 @@ pip install -r requirements.txt
 
 # 4. Set environment variables
 export PINECONE_API_KEY="your-pinecone-key"
-export GROQ_API_KEY="your-groq-key"  # Free at console.groq.com
+# Optional: export OPENAI_API_KEY="your-openai-key"
 
 # 5. Add your PDF
 mkdir data
@@ -120,7 +106,7 @@ Create a `.env` file in the project root:
 ```env
 PINECONE_API_KEY=your-pinecone-api-key-here
 PINECONE_INDEX=agentic-ai-ebook
-GROQ_API_KEY=your-groq-key-here  # Free at console.groq.com
+OPENAI_API_KEY=your-openai-key-here  # Optional
 ```
 
 Or set them directly in your shell:
@@ -128,11 +114,11 @@ Or set them directly in your shell:
 ```bash
 # Windows PowerShell
 $env:PINECONE_API_KEY="your-key"
-$env:GROQ_API_KEY="your-key"
+$env:OPENAI_API_KEY="your-key"
 
 # macOS/Linux
 export PINECONE_API_KEY="your-key"
-export GROQ_API_KEY="your-key"
+export OPENAI_API_KEY="your-key"
 ```
 
 ---
@@ -174,7 +160,7 @@ The app will open in your browser at `http://localhost:8501`.
 ### Step 3: Configure in the UI
 
 1. Enter your Pinecone API key in the sidebar (if not set via env var)
-2. Enter your Groq API key (free at console.groq.com)
+2. Optionally add OpenAI API key for LLM-powered answers
 3. Adjust retrieval settings (top_k, etc.)
 4. Click "Initialize Pipeline"
 5. Start asking questions!
@@ -183,18 +169,7 @@ The app will open in your browser at `http://localhost:8501`.
 
 ## ☁️ Deploying to Hugging Face Spaces
 
-### Method 1: From GitHub (Recommended)
-
-1. **Create a new Space** on [huggingface.co/spaces](https://huggingface.co/spaces)
-   - Select **Streamlit** as the SDK
-   - Link to this GitHub repo
-
-2. **Set secrets** in Space Settings → Repository secrets:
-   - `PINECONE_API_KEY`: Your Pinecone key
-   - `PINECONE_INDEX`: `agentic-ai-ebook`
-   - `GROQ_API_KEY`: Your Groq key (free)
-
-### Method 2: Git-based Deployment
+### Method 1: Git-based Deployment
 
 1. **Create a new Space** on [huggingface.co/spaces](https://huggingface.co/spaces)
    - Select **Streamlit** as the SDK
@@ -213,8 +188,29 @@ git push
 
 3. **Set secrets** in Space Settings → Repository secrets:
    - `PINECONE_API_KEY`: Your Pinecone key
-   - `PINECONE_INDEX`: `agentic-ai-ebook`
-   - `GROQ_API_KEY`: Your Groq key
+   - `PINECONE_INDEX`: Your index name
+   - `OPENAI_API_KEY`: (Optional) Your OpenAI key
+
+4. **Important**: Ensure your `README.md` has the HF Spaces header:
+
+```yaml
+---
+title: Agentic AI eBook Chatbot
+emoji: 🤖
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+sdk_version: "1.28.0"
+app_file: streamlit_app/app.py
+pinned: false
+---
+```
+
+### Method 2: Manual Upload
+
+1. Create a new Streamlit Space on Hugging Face
+2. Upload all files via the web interface
+3. Set secrets in Space Settings
 
 > 📚 **Reference**: [Hugging Face Spaces - Streamlit Docs](https://huggingface.co/docs/hub/spaces-sdks-streamlit)
 
@@ -330,8 +326,10 @@ rag-eAgenticAI/
 
 | Service | Required | How to Get | Purpose |
 |---------|----------|------------|---------|
-| **Pinecone** | Yes | [pinecone.io](https://www.pinecone.io/) (free tier) | Vector storage & retrieval |
-| **Groq** | Yes | [console.groq.com](https://console.groq.com/) (FREE) | LLM answer generation |
+| **Pinecone** | Yes* | [pinecone.io](https://www.pinecone.io/) (free tier) | Vector storage & retrieval |
+| **OpenAI** | No | [platform.openai.com](https://platform.openai.com/) | LLM answer generation |
+
+*You can run in `--local-only` mode without Pinecone for testing.
 
 ### Getting Pinecone API Key
 
@@ -340,12 +338,12 @@ rag-eAgenticAI/
 3. Create a new key
 4. Copy and set as `PINECONE_API_KEY`
 
-### Getting Groq API Key (FREE)
+### Getting OpenAI API Key (Optional)
 
-1. Create account at [console.groq.com](https://console.groq.com/)
+1. Create account at [platform.openai.com](https://platform.openai.com/)
 2. Go to API Keys
 3. Create a new secret key
-4. Copy and set as `GROQ_API_KEY`
+4. Copy and set as `OPENAI_API_KEY`
 
 ---
 
@@ -372,11 +370,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [LangGraph](https://github.com/langchain-ai/langgraph) for RAG orchestration
+- [LangGraph](https://github.com/langchain-ai/langgraph) for RAG orchestration patterns
 - [Pinecone](https://www.pinecone.io/) for vector database
-- [Groq](https://groq.com/) for free LLM inference
 - [Sentence-Transformers](https://www.sbert.net/) for embeddings
 - [Streamlit](https://streamlit.io/) for the web framework
+- [Hugging Face](https://huggingface.co/) for hosting
 
 ---
 

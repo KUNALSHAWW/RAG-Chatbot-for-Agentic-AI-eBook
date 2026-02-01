@@ -1,9 +1,18 @@
 """
 Streamlit App for RAG Chatbot - Agentic AI eBook
-Modern ChatGPT/Gemini-style UI
+
+This is the main UI for the RAG chatbot. It provides:
+- Chat interface for asking questions
+- Configuration sidebar (API keys, top_k, etc.)
+- Display of retrieved chunks and confidence scores
+- Raw JSON response viewer
 
 Usage:
     streamlit run streamlit_app/app.py
+
+For Hugging Face Spaces deployment:
+    - Set secrets in Space settings for PINECONE_API_KEY, OPENAI_API_KEY
+    - Or let users input keys in the sidebar
 """
 
 import os
@@ -15,32 +24,12 @@ from dotenv import load_dotenv
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Load environment variables
+# Load environment variables from the project root .env file
 env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
 load_dotenv(env_path)
 
 # Import RAG pipeline
 from app.rag_pipeline import RAGPipeline
-
-
-# ============================================================================
-# Helper to get secrets securely
-# ============================================================================
-
-def get_secret(key: str, default: str = "") -> str:
-    """
-    Get secret from Streamlit secrets first, then env vars.
-    This ensures API keys are never displayed openly.
-    """
-    # Try Streamlit secrets first (for deployed apps)
-    try:
-        if hasattr(st, 'secrets') and key in st.secrets:
-            return st.secrets[key]
-    except Exception:
-        pass
-    # Fall back to environment variables
-    return os.getenv(key, default)
-
 
 # ============================================================================
 # Page Configuration
@@ -49,135 +38,79 @@ def get_secret(key: str, default: str = "") -> str:
 st.set_page_config(
     page_title="Agentic AI eBook Chatbot",
     page_icon="🤖",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Modern CSS styling
+# Custom CSS for better styling
 st.markdown("""
 <style>
-    /* Hide default streamlit elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    /* Header styling */
-    .main-title {
-        text-align: center;
+    /* Main container styling */
+    .main-header {
         font-size: 2.5rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.5rem;
-    }
-    
-    .subtitle {
+        font-weight: bold;
+        color: #1E88E5;
         text-align: center;
-        color: #888;
-        font-size: 1rem;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
     }
     
-    /* Chat message styling */
-    .user-message {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1rem 1.5rem;
-        border-radius: 20px 20px 5px 20px;
-        margin: 0.5rem 0;
-        max-width: 80%;
-        margin-left: auto;
-        word-wrap: break-word;
+    /* Answer card styling */
+    .answer-card {
+        background-color: #f0f7ff;
+        border-left: 4px solid #1E88E5;
+        padding: 1rem;
+        border-radius: 0 8px 8px 0;
+        margin: 1rem 0;
     }
     
-    .assistant-message {
-        background: #f0f2f6;
-        color: #1a1a2e;
-        padding: 1rem 1.5rem;
-        border-radius: 20px 20px 20px 5px;
-        margin: 0.5rem 0;
-        max-width: 90%;
-        border: 1px solid #e0e0e0;
-        word-wrap: break-word;
-    }
-    
-    /* Confidence badge */
+    /* Confidence badge styling */
     .confidence-badge {
         display: inline-block;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        margin-top: 0.5rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-weight: bold;
+        font-size: 0.9rem;
     }
     
-    .conf-high {
-        background: #d4edda;
-        color: #155724;
+    .confidence-high {
+        background-color: #c8e6c9;
+        color: #2e7d32;
     }
     
-    .conf-medium {
-        background: #fff3cd;
-        color: #856404;
+    .confidence-medium {
+        background-color: #fff3e0;
+        color: #ef6c00;
     }
     
-    .conf-low {
-        background: #f8d7da;
-        color: #721c24;
+    .confidence-low {
+        background-color: #ffcdd2;
+        color: #c62828;
     }
     
-    /* Source chips */
-    .source-chip {
-        display: inline-block;
-        background: #e9ecef;
-        color: #495057;
-        padding: 0.2rem 0.6rem;
-        border-radius: 12px;
-        font-size: 0.7rem;
-        margin: 0.1rem;
+    /* Chunk card styling */
+    .chunk-card {
+        background-color: #fafafa;
+        border: 1px solid #e0e0e0;
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
     }
     
-    /* Welcome container */
-    .welcome-box {
+    /* Footer styling */
+    .footer {
         text-align: center;
-        padding: 2rem;
-        background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-        border-radius: 20px;
-        margin: 2rem 0;
-    }
-    
-    /* Sample question buttons */
-    .stButton > button {
-        border-radius: 20px !important;
-        border: 1px solid #667eea !important;
-        background: white !important;
-        color: #667eea !important;
-        font-size: 0.85rem !important;
-        padding: 0.5rem 1rem !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .stButton > button:hover {
-        background: #667eea !important;
-        color: white !important;
-    }
-    
-    /* Status indicator */
-    .status-ready {
-        color: #28a745;
-        font-weight: 600;
-    }
-    
-    .status-not-ready {
-        color: #dc3545;
-        font-weight: 600;
+        color: #666;
+        font-size: 0.8rem;
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e0e0e0;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ============================================================================
-# Session State
+# Session State Initialization
 # ============================================================================
 
 if "messages" not in st.session_state:
@@ -189,378 +122,251 @@ if "pipeline" not in st.session_state:
 if "last_response" not in st.session_state:
     st.session_state.last_response = None
 
-if "processing" not in st.session_state:
-    st.session_state.processing = False
-
-if "pending_query" not in st.session_state:
-    st.session_state.pending_query = None
-
-# Track the last processed query to prevent duplicate processing
-if "last_processed_query" not in st.session_state:
-    st.session_state.last_processed_query = None
-
-# Store API keys in session state (hidden from UI once entered)
-if "api_keys_configured" not in st.session_state:
-    st.session_state.api_keys_configured = False
-
-if "stored_pinecone_key" not in st.session_state:
-    st.session_state.stored_pinecone_key = get_secret("PINECONE_API_KEY", "")
-
-if "stored_index_name" not in st.session_state:
-    st.session_state.stored_index_name = get_secret("PINECONE_INDEX", "agentic-ai-ebook")
-
-if "stored_groq_key" not in st.session_state:
-    st.session_state.stored_groq_key = get_secret("GROQ_API_KEY", "")
-
-if "stored_openai_key" not in st.session_state:
-    st.session_state.stored_openai_key = get_secret("OPENAI_API_KEY", "")
-
 
 # ============================================================================
-# Helper Functions
-# ============================================================================
-
-def initialize_pipeline(pinecone_key, index_name, openai_key, groq_key, local_mode):
-    """Initialize the RAG pipeline with given credentials."""
-    try:
-        pipeline = RAGPipeline(
-            pinecone_api_key=pinecone_key if not local_mode else None,
-            index_name=index_name,
-            namespace="agentic-ai",
-            openai_api_key=openai_key if openai_key else None,
-            groq_api_key=groq_key if groq_key else None,
-            local_only=local_mode
-        )
-        return pipeline, None
-    except Exception as e:
-        return None, str(e)
-
-
-def get_confidence_class(confidence):
-    """Get CSS class based on confidence score."""
-    if confidence >= 0.7:
-        return "conf-high"
-    elif confidence >= 0.4:
-        return "conf-medium"
-    return "conf-low"
-
-
-# ============================================================================
-# Sidebar for Settings
+# Sidebar Configuration
 # ============================================================================
 
 with st.sidebar:
-    st.markdown("## ⚙️ Settings")
-    
-    # Show configuration status
-    if st.session_state.api_keys_configured:
-        st.success("🔐 API Keys Configured")
-        st.info("Keys are stored securely in session")
-        
-        if st.button("🔄 Reconfigure Keys", use_container_width=True):
-            st.session_state.api_keys_configured = False
-            st.session_state.pipeline = None
-            st.rerun()
-    else:
-        st.markdown("### 🔑 Enter API Keys")
-        st.caption("Keys are stored securely and hidden after configuration")
-        
-        pinecone_key = st.text_input(
-            "Pinecone API Key",
-            type="password",
-            value="",
-            key="pinecone_key_input",
-            placeholder="Enter your Pinecone API key"
-        )
-        
-        index_name = st.text_input(
-            "Pinecone Index",
-            value=st.session_state.stored_index_name,
-            key="index_name_input"
-        )
-        
-        groq_key = st.text_input(
-            "Groq API Key (FREE)",
-            type="password",
-            value="",
-            key="groq_key_input",
-            help="Get free key at console.groq.com",
-            placeholder="Enter your Groq API key"
-        )
-        
-        openai_key = st.text_input(
-            "OpenAI Key (optional)",
-            type="password",
-            value="",
-            key="openai_key_input",
-            placeholder="Optional - for OpenAI models"
-        )
-        
-        if st.button("💾 Save & Configure", type="primary", use_container_width=True):
-            # Store keys in session state (not displayed)
-            if pinecone_key:
-                st.session_state.stored_pinecone_key = pinecone_key
-            if groq_key:
-                st.session_state.stored_groq_key = groq_key
-            if openai_key:
-                st.session_state.stored_openai_key = openai_key
-            st.session_state.stored_index_name = index_name
-            st.session_state.api_keys_configured = True
-            st.rerun()
+    st.header("⚙️ Configuration")
     
     st.markdown("---")
     
-    top_k = st.slider("Chunks to retrieve", 1, 10, 6, key="top_k")
-    use_llm = st.checkbox("Use LLM", value=True, key="use_llm")
-    local_mode = st.checkbox("Local Mode", value=False, key="local_mode")
-    show_chunks = st.checkbox("Show retrieved chunks", value=False, key="show_chunks", 
-                              help="Enable to see the top-k retrieved document chunks")
+    # API Keys section
+    st.subheader("🔑 API Keys")
+    
+    # Pinecone API Key
+    pinecone_key = st.text_input(
+        "Pinecone API Key",
+        type="password",
+        value=os.getenv("PINECONE_API_KEY", ""),
+        help="Required for vector search. Get your key at pinecone.io"
+    )
+    
+    # Pinecone Index Name
+    index_name = st.text_input(
+        "Pinecone Index Name",
+        value=os.getenv("PINECONE_INDEX", "agentic-ai-ebook"),
+        help="Name of your Pinecone index"
+    )
+    
+    # OpenAI API Key (optional)
+    openai_key = st.text_input(
+        "OpenAI API Key (optional)",
+        type="password",
+        value=os.getenv("OPENAI_API_KEY", ""),
+        help="For LLM-powered answers. Leave empty if using Groq."
+    )
+    
+    # Groq API Key (optional - FREE!)
+    groq_key = st.text_input(
+        "Groq API Key (FREE LLM)",
+        type="password",
+        value=os.getenv("GROQ_API_KEY", ""),
+        help="Free LLM alternative! Get key at console.groq.com"
+    )
     
     st.markdown("---")
     
-    if st.button("🚀 Initialize Pipeline", type="primary", use_container_width=True):
-        with st.spinner("Initializing..."):
-            pipeline, error = initialize_pipeline(
-                st.session_state.stored_pinecone_key, 
-                st.session_state.stored_index_name, 
-                st.session_state.stored_openai_key, 
-                st.session_state.stored_groq_key, 
-                local_mode
-            )
-            if error:
-                st.error(f"❌ {error}")
-            else:
-                st.session_state.pipeline = pipeline
-                st.success("✅ Ready!")
+    # Retrieval settings
+    st.subheader("🔍 Retrieval Settings")
     
-    # Status
+    top_k = st.slider(
+        "Number of chunks to retrieve (top_k)",
+        min_value=1,
+        max_value=10,
+        value=6,
+        help="More chunks = more context but potentially more noise"
+    )
+    
+    use_llm = st.checkbox(
+        "Use LLM for answer generation",
+        value=True,
+        help="Uncheck to always use extractive mode"
+    )
+    
+    local_mode = st.checkbox(
+        "Local Mode (no Pinecone)",
+        value=False,
+        help="Use local vector storage instead of Pinecone"
+    )
+    
+    st.markdown("---")
+    
+    # Initialize/Reinitialize button
+    if st.button("🔄 Initialize Pipeline", use_container_width=True):
+        with st.spinner("Initializing RAG pipeline..."):
+            try:
+                st.session_state.pipeline = RAGPipeline(
+                    pinecone_api_key=pinecone_key if pinecone_key else None,
+                    openai_api_key=openai_key if openai_key else None,
+                    groq_api_key=groq_key if groq_key else None,
+                    index_name=index_name,
+                    local_only=local_mode,
+                    top_k=top_k
+                )
+                st.success("✅ Pipeline initialized!")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
+    
+    # Status indicator
+    st.markdown("---")
+    st.subheader("📊 Status")
+    
     if st.session_state.pipeline:
-        st.markdown('<p class="status-ready">● Pipeline Ready</p>', unsafe_allow_html=True)
+        st.success("Pipeline: Ready")
+        if st.session_state.pipeline.groq_client:
+            st.info("Mode: Groq LLM (FREE)")
+        elif st.session_state.pipeline.openai_client:
+            st.info("Mode: OpenAI LLM")
+        else:
+            st.warning("Mode: Extractive (no LLM)")
     else:
-        st.markdown('<p class="status-not-ready">● Not Initialized</p>', unsafe_allow_html=True)
+        st.warning("Pipeline: Not initialized")
+        st.caption("Click 'Initialize Pipeline' to start")
 
 
 # ============================================================================
-# Auto-initialize if env vars/secrets are set
-# ============================================================================
-
-if st.session_state.pipeline is None and not st.session_state.processing:
-    pk = st.session_state.stored_pinecone_key
-    gk = st.session_state.stored_groq_key
-    
-    if pk and gk:
-        pipeline, _ = initialize_pipeline(
-            pk,
-            st.session_state.stored_index_name,
-            st.session_state.stored_openai_key,
-            gk,
-            False
-        )
-        if pipeline:
-            st.session_state.pipeline = pipeline
-            st.session_state.api_keys_configured = True
-
-
-# ============================================================================
-# Main UI
+# Main Content Area
 # ============================================================================
 
 # Header
-st.markdown('<h1 class="main-title">🤖 Agentic AI Chatbot</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Ask questions about the Agentic AI eBook • Grounded answers only</p>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🤖 Agentic AI eBook Chatbot</div>', unsafe_allow_html=True)
 
+st.markdown("""
+<p style="text-align: center; color: #666;">
+    Ask questions about the Agentic AI eBook. Answers are strictly grounded in the document.
+</p>
+""", unsafe_allow_html=True)
 
-# ============================================================================
-# Chat Display
-# ============================================================================
+st.markdown("---")
 
-# Welcome screen if no messages
-if not st.session_state.messages:
-    st.markdown("""
-    <div class="welcome-box">
-        <h2>👋 Welcome!</h2>
-        <p style="color: #666; max-width: 500px; margin: 0 auto 1rem auto;">
-            I'm your AI assistant for the Agentic AI eBook. 
-            Ask me anything about the document and I'll find relevant answers.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+# Check if pipeline is initialized
+if not st.session_state.pipeline:
+    st.info("👈 Please configure your API keys and click 'Initialize Pipeline' in the sidebar to start.")
     
-    st.markdown("### 💡 Try these questions:")
-    
-    sample_questions = [
-        "What is the definition of agentic AI?",
-        "What are the key characteristics of agentic systems?",
-        "What risks does the eBook mention?",
-        "What safeguards are recommended?"
+    # Show sample queries
+    st.subheader("📝 Sample Questions to Try")
+    sample_queries = [
+        "What is the definition of 'agentic AI' described in the eBook?",
+        "List the three risks of agentic systems the eBook mentions.",
+        "What are the recommended safeguards for deploying agentic AI?",
+        "How does the eBook distinguish between autonomous agents and traditional automation?",
+        "What future research directions does the eBook propose?"
     ]
     
-    cols = st.columns(2)
-    for i, q in enumerate(sample_questions):
-        with cols[i % 2]:
-            if st.button(q, key=f"sample_{i}", use_container_width=True):
-                if st.session_state.pipeline:
-                    st.session_state.messages.append({"role": "user", "content": q})
-                    st.rerun()
-                else:
-                    st.warning("Please initialize the pipeline first (click sidebar)")
+    for query in sample_queries:
+        st.markdown(f"- {query}")
 
 else:
-    # Display all messages
-    for idx, message in enumerate(st.session_state.messages):
-        if message["role"] == "user":
-            st.markdown(f"""
-            <div style="display: flex; justify-content: flex-end; margin: 1rem 0;">
-                <div class="user-message">{message["content"]}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            content = message["content"]
-            confidence = message.get("confidence", 0)
-            sources = message.get("sources", [])
-            chunks = message.get("chunks", [])
-            
-            conf_class = get_confidence_class(confidence)
-            
-            # Build sources HTML
-            sources_html = ""
-            if sources:
-                chips = " ".join([f'<span class="source-chip">📄 Page {s}</span>' for s in sources[:5]])
-                sources_html = f'<div style="margin-top: 0.5rem;">{chips}</div>'
-            
-            st.markdown(f"""
-            <div style="margin: 1rem 0;">
-                <div class="assistant-message">
-                    <div style="white-space: pre-wrap;">{content}</div>
-                    <div style="margin-top: 0.75rem;">
-                        <span class="confidence-badge {conf_class}">
-                            Confidence: {confidence:.0%}
-                        </span>
-                    </div>
-                    {sources_html}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Show retrieved chunks if enabled and chunks exist
-            if st.session_state.get("show_chunks", False) and chunks:
-                with st.expander(f"📚 View Top {len(chunks)} Retrieved Chunks", expanded=False):
-                    for i, chunk in enumerate(chunks, 1):
-                        chunk_text = chunk.get("text", "")[:500] + "..." if len(chunk.get("text", "")) > 500 else chunk.get("text", "")
-                        chunk_page = chunk.get("page", "?")
-                        chunk_score = chunk.get("score", 0)
-                        st.markdown(f"""
-                        **Chunk {i}** (Page {chunk_page}, Score: {chunk_score:.3f})
-                        > {chunk_text}
-                        ---
-                        """)
+    # Chat interface
+    col1, col2 = st.columns([2, 1])
     
-    # Clear chat button
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
+    with col1:
+        st.subheader("💬 Chat")
+        
+        # Display chat history
+        chat_container = st.container()
+        
+        with chat_container:
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.write(message["content"])
+        
+        # Chat input
+        user_input = st.chat_input("Ask a question about the Agentic AI eBook...")
+        
+        if user_input:
+            # Add user message to chat
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            
+            # Display user message
+            with st.chat_message("user"):
+                st.write(user_input)
+            
+            # Get response from pipeline
+            with st.chat_message("assistant"):
+                with st.spinner("Searching document and generating answer..."):
+                    try:
+                        response = st.session_state.pipeline.query(
+                            user_input,
+                            top_k=top_k,
+                            use_llm=use_llm
+                        )
+                        
+                        # Store response for display
+                        st.session_state.last_response = response
+                        
+                        # Display answer
+                        answer = response.get("final_answer", "No answer generated")
+                        st.write(answer)
+                        
+                        # Display confidence
+                        confidence = response.get("confidence", 0.0)
+                        if confidence >= 0.7:
+                            conf_class = "confidence-high"
+                        elif confidence >= 0.4:
+                            conf_class = "confidence-medium"
+                        else:
+                            conf_class = "confidence-low"
+                        
+                        st.markdown(
+                            f'<span class="confidence-badge {conf_class}">Confidence: {confidence:.3f}</span>',
+                            unsafe_allow_html=True
+                        )
+                        
+                        # Add assistant message to chat
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": answer
+                        })
+                        
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": f"Error: {str(e)}"
+                        })
+        
+        # Clear chat button
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.last_response = None
-            st.session_state.processing = False
-            st.session_state.pending_query = None
-            st.session_state.last_processed_query = None  # Reset processed query tracker
             st.rerun()
-
-
-# ============================================================================
-# Chat Input (MUST be at top level, not in any container)
-# ============================================================================
-
-user_input = st.chat_input("Ask a question about the Agentic AI eBook...")
-
-# Handle new user input
-if user_input and not st.session_state.processing:
-    if st.session_state.pipeline is None:
-        st.warning("⚠️ Please initialize the pipeline first (open sidebar → click Initialize)")
-    else:
-        # Set processing flag to prevent duplicate queries
-        st.session_state.processing = True
-        st.session_state.pending_query = user_input
-        st.rerun()
-
-# Process pending query (runs after rerun to ensure single execution)
-if st.session_state.processing and st.session_state.pending_query:
-    query = st.session_state.pending_query
     
-    # CRITICAL: Check if this exact query was already processed to prevent duplicates
-    # This handles race conditions in Streamlit's rerun cycle
-    if st.session_state.last_processed_query == query:
-        # Already processed, just clear state and skip
-        st.session_state.processing = False
-        st.session_state.pending_query = None
-    else:
-        # Mark this query as being processed IMMEDIATELY
-        st.session_state.last_processed_query = query
+    with col2:
+        st.subheader("📚 Retrieved Chunks")
         
-        # Add user message only if not already added
-        already_added = (
-            st.session_state.messages 
-            and st.session_state.messages[-1].get("role") == "user" 
-            and st.session_state.messages[-1].get("content") == query
-        )
-        if not already_added:
-            st.session_state.messages.append({"role": "user", "content": query})
-        
-        # Display user message immediately
-        st.markdown(f"""
-        <div style="display: flex; justify-content: flex-end; margin: 1rem 0;">
-            <div class="user-message">{query}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Get response
-        try:
-            with st.spinner("🔍 Searching document and generating answer..."):
-                response = st.session_state.pipeline.query(
-                    query,
-                    top_k=st.session_state.get("top_k", 6),
-                    use_llm=st.session_state.get("use_llm", True)
-                )
-                
-                # Extract data - single best answer
-                answer = response.get("final_answer", "I couldn't find an answer.")
-                confidence = response.get("confidence", 0.0)
-                chunks = response.get("retrieved_chunks", [])
-                
-                # Get source pages
-                sources = list(set([c.get("page", "?") for c in chunks]))
-                sources.sort()
-                
-                # Add assistant message only if not already added for this query
-                last_msg = st.session_state.messages[-1] if st.session_state.messages else None
-                if not last_msg or last_msg.get("role") != "assistant":
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": answer,
-                        "confidence": confidence,
-                        "sources": sources,
-                        "chunks": chunks  # Store chunks for optional viewing
-                    })
-                
-                st.session_state.last_response = response
-                
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-            # Only add error message if not already an assistant response
-            last_msg = st.session_state.messages[-1] if st.session_state.messages else None
-            if not last_msg or last_msg.get("role") != "assistant":
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"Sorry, an error occurred: {str(e)}",
-                    "confidence": 0,
-                    "sources": [],
-                    "chunks": []
-                })
-        
-        # Clear processing state
-        st.session_state.processing = False
-        st.session_state.pending_query = None
-        st.rerun()
+        if st.session_state.last_response:
+            response = st.session_state.last_response
+            chunks = response.get("retrieved_chunks", [])
+            
+            if chunks:
+                for i, chunk in enumerate(chunks):
+                    with st.expander(
+                        f"Chunk {i+1} (Page {chunk.get('page', '?')}, Score: {chunk.get('score', 0):.3f})",
+                        expanded=(i == 0)
+                    ):
+                        st.markdown(f"**ID:** `{chunk.get('id', 'unknown')}`")
+                        st.markdown(f"**Page:** {chunk.get('page', 'unknown')}")
+                        st.markdown(f"**Relevance Score:** {chunk.get('score', 0):.4f}")
+                        st.markdown("**Text:**")
+                        st.text_area(
+                            "Chunk text",
+                            value=chunk.get("text", ""),
+                            height=150,
+                            label_visibility="collapsed",
+                            key=f"chunk_{i}"
+                        )
+            else:
+                st.info("No chunks retrieved yet. Ask a question!")
+            
+            # Raw JSON viewer
+            st.markdown("---")
+            with st.expander("🔍 Show Raw JSON Response"):
+                st.json(response)
+        else:
+            st.info("Ask a question to see retrieved chunks.")
 
 
 # ============================================================================
@@ -569,8 +375,39 @@ if st.session_state.processing and st.session_state.pending_query:
 
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; color: #888; font-size: 0.8rem; padding-bottom: 2rem;">
-    Built with LangGraph • Pinecone • Groq • Streamlit<br>
-    <em>Answers are strictly grounded in the Agentic AI eBook</em>
+<div class="footer">
+    <p>
+        <strong>Built for AI Engineer Intern Assignment</strong><br>
+        Answers are strictly grounded in the Agentic AI eBook.<br>
+        Using: LangGraph • Pinecone • Sentence-Transformers • Streamlit
+    </p>
 </div>
 """, unsafe_allow_html=True)
+
+
+# ============================================================================
+# Auto-initialize if env vars are set
+# ============================================================================
+
+# Try to auto-initialize on first load if env vars are present
+if st.session_state.pipeline is None:
+    env_pinecone = os.getenv("PINECONE_API_KEY")
+    env_groq = os.getenv("GROQ_API_KEY")
+    if env_pinecone:
+        try:
+            st.session_state.pipeline = RAGPipeline(
+                pinecone_api_key=env_pinecone,
+                openai_api_key=os.getenv("OPENAI_API_KEY"),
+                groq_api_key=env_groq,
+                index_name=os.getenv("PINECONE_INDEX", "agentic-ai-ebook"),
+                local_only=False
+            )
+            # Debug: show which LLM is being used
+            if st.session_state.pipeline.groq_client:
+                st.sidebar.success("✅ Groq LLM connected!")
+            elif st.session_state.pipeline.openai_client:
+                st.sidebar.info("ℹ️ OpenAI LLM connected")
+            else:
+                st.sidebar.warning("⚠️ No LLM - using extractive mode")
+        except Exception as e:
+            st.sidebar.error(f"Auto-init failed: {e}")
